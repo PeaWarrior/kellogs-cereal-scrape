@@ -1,0 +1,20 @@
+﻿.AstuteBotMessengerContainer {
+    /*border: thin solid black; */
+    z-index: 999;
+    box-sizing: border-box;
+    position: fixed;
+    background: transparent;
+
+    /* try to make border (which needs to be somewhat substantial for resizing to be usable) transparent */
+    /*border: 4px solid rgb(0, 0, 0);
+    border: 4px solid rgba(0, 0, 0, .0);*/
+    -webkit-background-clip: padding-box;
+    background-clip: padding-box;
+}
+
+.AstuteBotMessengerContainer[data-type="Launcher"] { z-index: 998; }
+.AstuteBotMessengerContainer[data-type="Attention"] { z-index: 997; }
+
+.AstuteBotMessengerContainer .BorderContainer { height: 100%; box-sizing: initial; }
+.AstuteBotMessengerContainer .ComponentFrame { width: 100%; height: 100%; }
+

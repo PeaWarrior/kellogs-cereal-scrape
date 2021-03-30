@@ -1,0 +1,858 @@
+/* Minification failed. Returning unminified contents.
+(52,26-31): run-time error JS1137: 'catch' is a new reserved word and should not be used as an identifier: catch
+ */
+var RealtimeHubClientFactory = (function () {
+    var _factoryInterface = {
+        createInstance: function (options) { return null; },
+        getFactoryData: function () { if (!_factoryData.isInitialized) { init(); } return _factoryData; }
+    };
+
+    function init() {
+        _factoryData.defaultInstanceOptions = {
+            url: null,
+            logToConsole: true,
+            callbacks: {
+                onConnectionStateChanged: function(isConnected) { }
+            }
+        };
+
+        // script tag that includes signalr client should call this fn on error
+        _factoryData.onErrorLoadingSignalRClient = function (ths, event) {
+            this.signalRLoaded = false;
+            var script = ths.src;
+
+            var html =
+                '<div class="signalrerror btn-group dropdown caret_down" style="position: relative; left: 160px; top: -2px; z-index: 1000;">' +
+                     '<i class="clickable dropdown-toggle noselect si-notifications" data-toggle="dropdown" style="padding: 1px; font-size: 26px; background-color: white; color: red; border-radius: 4px;"/>'
+				'</div>',
+
+            $('.navbar-brand').append(html);
+            var firstClick = true;
+            $('.navbar-brand').find('.signalrerror > i').click(function (e) {
+                if (!firstClick) return;
+                firstClick = false;
+                $(this).parent().append(
+					'<ul class="dropdown_caret dropdown-menu" role="menu" style="margin-left: 3px; margin-top: 5px; color: #333; text-shadow: none; padding: 8px; width: 500px; line-height: 24px;">' +
+                        'Unable to load <a target="_blank" href="' + ths.src + '">' + ths.src + '</a>.<br/>' +
+                        'Some features of the site are disabled because of this.' +
+                        '<br/><br/>' +
+                        '<center><button class="btn btn-sm btn-default diagnose">Try to get diagnostic information</button></center>' +                        
+                        '<div class="diagnostics" style="font-family: Arial; font-size: 12px; line-height: initial; background-color: #FFA; padding: 8px; border-radius: 4px; margin-top: 8px; display: none; white-space:breakword; word-wrap: break-word;"></div>' +
+					'</ul>'
+                );
+                
+                $('.navbar-brand').find('.signalrerror .diagnose').click(function () {
+                    $('.navbar-brand').find('.signalrerror .diagnostics').hide();
+                    fetch(script)
+                        .then(function (resp) {                            
+                            $('.navbar-brand').find('.signalrerror .diagnostics').show().html('Response: ' + JSON.stringify({
+                                url: resp.url,
+                                type: resp.type,
+                                status: resp.status,
+                                statusText: resp.statusText
+                            }));
+                        })
+                        .catch(function(err) {
+                            $('.navbar-brand').find('.signalrerror .diagnostics').show().html('Error: ' + err);
+                        });
+                    return false;
+                });
+            });
+
+            signalRLoaded = false;
+        }
+
+        _factoryData.isInitialized = true;
+    };
+
+    var _factoryData = {
+        isInitialized: false,
+        signalRLoaded: true,
+                
+        onErrorLoadingSignalRClient: function (ths) {}
+    };
+
+    return _factoryInterface;
+}());
+
+
+RealtimeHubClientFactory.createInstance = function (options) {
+
+    var _interface = {
+        getConnectionId: function () { return $.connection.hub.id; },
+        getIsConnected: function () { return _isConnected; },
+        getClientId: function () { return _clientIdIndex++; },        
+        conversations: function () { return this.getHub('conversations'); },
+        conversationMessages: function () { return this.getHub('conversationMessages'); },
+        conversationModifications: function () { return this.getHub('conversationModifications'); },
+        conversationLanguage: function () { return this.getHub('conversationLanguage'); },
+        versionSets: function () { return this.getHub('versionSets'); },
+        conversationFlowTransitions: function () { return this.getHub('ConversationFlowTransitions'); },
+        exportDefinitions: function () { return this.getHub('exportDefinitions'); },
+        searchIndexDocuments: function () { return this.getHub('searchIndexDocuments'); },
+        notifications: function () { return this.getHub('notifications'); },
+        userInfo: function () { return this.getHub('userInfo'); },
+        uiViewers: function () { return this.getHub('uiViewers'); },
+        agentWorkspace: function () { return this.getHub('agentWorkspace'); },
+        messengerEvents: function () { return this.getHub('messengerEvents'); },
+        botOperations: function () { return this.getHub('botOperations'); },
+        
+        // maybe use this going forward?
+        getHub: function (type) { 
+            //var realHub = _u.find(_hubContainers, function (o) { return o.type == type; }).hub;
+            var realHub = null;
+            for (var i = 0; i < _hubContainers.length; i++) {
+                var o = _hubContainers[i];
+                if (o.type == type) {
+                    realHub = o.hub;
+                    break;
+                }
+            }
+
+            if (realHub != null) return realHub;
+
+            // if hub is null (i.e. signalr didn't load properly), then return a "nop hub" that doesnt do anything.  this way client code doesn't need to do null checking everywhere
+            // (on the other hand, if client code actually NEEDS to do client checking then this won't work anymore)
+            var nopHub = {
+                subscribe: function () {},
+                unsubscribe: function () {}
+            };
+            return nopHub;
+        }
+    };
+
+    var _factoryData = this.getFactoryData();
+    var _options = $.extend(true, {}, _factoryData.defaultInstanceOptions, options);
+
+    var _prettyStates = { 0: 'connecting', 1: 'connected', 2: 'reconnecting', 4: 'disconnected' };
+
+    var _hubContainers = [
+        { type: 'conversationMessages', connection: $.connection.conversationMessage, hubFactory: ConversationMessageHubFactory, hub: null },
+        { type: 'conversationLanguage', connection: $.connection.conversationLanguage, hubFactory: ConversationLanguageHubFactory, hub: null },
+        { type: 'conversationModifications', connection: $.connection.conversationModification, hubFactory: ConversationModificationHubFactory, hub: null },
+        { type: 'conversations', connection: $.connection.conversation, hubFactory: ConversationHubFactory, hub: null },
+        { type: 'versionSets', connection: $.connection.versionSet, hubFactory: VersionSetsHubFactory, hub: null },
+        { type: 'ConversationFlowTransitions', connection: $.connection.conversationFlowTransition, hubFactory: ConversationFlowTransitionHubFactory, hub: null },
+        { type: 'exportDefinitions', connection: $.connection.exportDefinition, hubFactory: ExportDefinitionsHubFactory, hub: null },
+        { type: 'searchIndexDocuments', connection: $.connection.searchIndexDocument, hubFactory: SearchIndexDocumentsHubFactory, hub: null },
+        { type: 'notifications', connection: $.connection.notification, hubFactory: NotificationsHubFactory, hub: null },
+        { type: 'userInfo', connection: $.connection.userInfo, hubFactory: UserInfoHubFactory, hub: null },
+        { type: 'uiViewers', connection: $.connection.uiViewer, hubFactory: UiViewersHubFactory, hub: null },
+        { type: 'agentWorkspace', connection: $.connection.agentWorkspace, hubFactory: AgentWorkspaceHubFactory, hub: null },
+        { type: 'messengerEvents', connection: $.connection.messengerEvent, hubFactory: MessengerEventHubFactory, hub: null },
+        { type: 'botOperations', connection: $.connection.botOperation, hubFactory: BotOperationsHubFactory, hub: null },
+    ];
+
+    var _initializedHubCount = 0;
+    var _totalHubCount = _hubContainers.length;
+
+    var _isConnected = false;
+    var _destroyed = false;
+
+    var _clientIdIndex = 0;
+
+    function log(msg) {
+        if (_options.logToConsole) console.log(msg);
+    }
+
+    function init() {
+        _destroyed = false;
+
+        if (!_factoryData.signalRLoaded) {
+            log('Error loading SignalR client - cannot do realtime communication features!');
+            return;
+        }
+
+        $.connection.hub.url = _options.url;
+
+        $.connection.hub.stateChanged(function (state) {
+            log('SignalR state changed from ' + _prettyStates[state.oldState] + ' to ' + _prettyStates[state.newState]);
+
+            var newIsConnected = state.newState == 1;
+            if (_isConnected == newIsConnected) {
+                return;
+            }
+
+            _isConnected = newIsConnected;
+            $.each(_hubContainers, function (index, hubContainer) {          
+                hubContainer.hub.onConnectionStateChanged(_isConnected);
+            });
+            _options.callbacks.onConnectionStateChanged(_isConnected);
+        });
+
+        $.connection.hub.disconnected(function () {
+            log('SignalR disconnected.');        
+            if (_destroyed) return;
+            reconnect();
+        });
+
+        $.each(_hubContainers, function (index, hubContainer) {
+            if (hubContainer.connection != null) {
+                hubContainer.hub = hubContainer.hubFactory.createInstance({
+                    connection: hubContainer.connection,
+                    logToConsole: false,
+                    callbacks: {
+                        onInitialized: onHubInitialized
+                    }
+                });
+            }
+        });        
+    }
+
+    _interface.destroy = function() {
+        _destroyed = true;
+        $.connection.hub.stop();
+    };
+
+
+    function connect() {
+        log('SignalR connecting...');
+        $.connection.hub.start()
+            .done(function () {
+                log('SignalR connect success.');
+            })
+            .fail(function () {
+                log('SignalR connect failure.');
+            });
+    };
+
+    function reconnect() {
+        setTimeout(connect, 5000);
+    }
+
+    function onHubInitialized() {
+        _initializedHubCount++;
+        if (_initializedHubCount < _totalHubCount) {
+            return;
+        }
+
+        connect();
+    }
+
+    init();
+    return _interface;
+};
+var RealtimeHubFactory = (function () {
+    var _factoryInterface = {
+        createInstance: function (options) { return null; },
+        getFactoryData: function () { if (!_factoryData.isInitialized) { init(); } return _factoryData; }
+    };
+
+    function init() {
+        _factoryData.defaultInstanceOptions = {
+            name: 'RealTimeHub',
+            connection: null, // passed in from RealtimeHubClient
+            subscribeFn: function (server, keyData, realtimeToken) { },                         // how do we subscribe to hub?
+            unsubscribeFn: function (server, keydata) { },                                      // how do we unsubscribe from hub?
+            matchUpdateFn: function (keyData, incomingData) { return false; },                  // how do we check if an incoming update applies to this subscription?
+            matchSubscriptionFn: function (keyData, subscriptionKeyData) { return false; },     // how do we check if a subscription matches oa given key?
+            logToConsole: true,
+
+            callbacks: {
+                onInitialized: function () { } // RealTimeHubClient needs to implement and pass in this
+            }
+        };
+
+        _factoryData.isInitialized = true;
+    };
+
+    var _factoryData = {
+        isInitialized: false
+    };
+
+    return _factoryInterface;
+}());
+
+
+RealtimeHubFactory.createInstance = function (options) {
+    var _interface = {
+        onConnectionStateChanged: function (isConnected) { onConnectionStateChanged(isConnected); },
+        subscribeAdvanced: function (clientId, keyData, realtimeToken, onAdded, onConnectionStateChanged) {},
+        unsubscribe: function (clientId) { return unsubscribe(clientId); },
+    };
+
+    var _factoryData = this.getFactoryData();
+    var _options = $.extend(true, {}, _factoryData.defaultInstanceOptions, options);
+    
+    var _hub = null;
+    var _connected = false;
+    var _subscriptions = [];
+
+    function log(msg) {
+        if (_options.logToConsole) console.log(msg);
+    }
+
+    function init() {
+        _hub = _options.connection;
+
+        var getSubscribers = function(message) {
+            var subscribers = [];
+            for (var i = 0; i < _subscriptions.length; i++) {
+                var s = _subscriptions[i];
+                if (_options.matchUpdateFn(s.keyData, message)) {
+                    subscribers.push(s);
+                }
+            }
+            return subscribers;
+        }
+
+        _hub.client.onAdded = function (message) {
+            log('SignalR ' + _options.name + ' added received.');
+            var subscribers = getSubscribers(message);                
+            //var subscribers = _u.filter(_subscriptions, function (s) { return _options.matchUpdateFn(s.keyData, message); });
+            $.each(subscribers, function (index, subscriber) {
+                if (typeof subscriber.callbacks.onAdded != 'undefined') {
+                    subscriber.callbacks.onAdded(message);
+                }
+            });
+        }
+
+        _hub.client.onUpdated = function (message) {
+            log('SignalR ' + _options.name + ' updated received.');
+            var subscribers = getSubscribers(message);
+            //var subscribers = _u.filter(_subscriptions, function (s) { return _options.matchUpdateFn(s.keyData, message); });
+            $.each(subscribers, function (index, subscriber) {
+                if (typeof subscriber.callbacks.onUpdated != 'undefined') {
+                    subscriber.callbacks.onUpdated(message);
+                }
+            });
+        }
+
+        _hub.client.onDeleted = function (message) {
+            log('SignalR ' + _options.name + ' deleted received.');
+            var subscribers = getSubscribers(message);
+            //var subscribers = _u.filter(_subscriptions, function (s) { return _options.matchUpdateFn(s.keyData, message); });
+            $.each(subscribers, function (index, subscriber) {
+                if (typeof subscriber.callbacks.onDeleted != 'undefined') {
+                    subscriber.callbacks.onDeleted(message);
+                }
+            });
+        }
+
+        _options.callbacks.onInitialized();
+    }
+
+    function onConnectionStateChanged(isConnected) {
+        log('SignalR ' + _options.name + ' on connection state changed');
+        _connected = isConnected
+        if (_connected) {
+            $.each(_subscriptions, function (index, subData) {
+                subscribePending(subData, subData.realtimeToken);
+            });
+        }
+
+        $.each(_subscriptions, function (index, subData) {
+            if (typeof subData.callbacks.onConnectionStateChanged != 'undefined') {
+                subData.callbacks.onConnectionStateChanged(_connected);
+            }
+        });
+    }
+
+    function subscribePending(subscription, realtimeToken) {
+        //var serverSubscriptionExists = (typeof _u.find(_subscriptions, function (s) { return _options.matchSubscriptionFn(keyData, s.keyData) && s.hasServerSubscription; }) != 'undefined');
+        //subscription.hasServerSubscription = true;
+        //if (serverSubscriptionExists) return;
+
+        _options.subscribeFn(_hub.server, subscription.keyData, realtimeToken);
+        log('SignalR ' + _options.name + ' subscribed to key ' + JSON.stringify(subscription.keyData) + '.');
+    }
+
+    _interface.subscribeToKey = function(clientId, keyData, realtimeToken, callbacks) {
+        if (typeof callbacks.onConnectionStateChanged != 'undefined') {
+            callbacks.onConnectionStateChanged(_connected);
+        }
+
+        //var existing = _u.find(_subscriptions, function (s) { return s.clientId == clientId && _options.matchSubscriptionFn(keyData, s.keyData); });
+        var existing;
+        for (var i = 0; i < _subscriptions.length; i++) {
+            var s = _subscriptions[i];
+            if (s.clientId == clientId && _options.matchSubscriptionFn(keyData, s.keyData)) {
+                existing = s;
+                break;
+            }
+        }
+
+        if (typeof existing != 'undefined') {
+            log('SignalR ' + _options.name + ' client ' + clientId + ' already subscribed to key ' + JSON.stringify(keyData));
+            return;
+        }
+
+        var newSubscription = {
+            clientId: clientId,
+            keyData: keyData,
+            realtimeToken: realtimeToken,
+            //hasServerSubscription: false,
+            callbacks: callbacks
+        };
+
+        _subscriptions.push(newSubscription);        
+       
+        if (_connected) {
+            subscribePending(newSubscription, realtimeToken);
+        } else {
+            log('SignalR ' + _options.name + ' client ' + clientId + ' queued subscription to key ' + JSON.stringify(keyData));
+        }
+    }
+
+    function unsubscribe(clientId) {
+        //var clientSubscriptions = _u.filter(_subscriptions, function (s) { return s.clientId == clientId; });
+        //_subscriptions = _u.reject(_subscriptions, function (s) { return s.clientId == clientId; });
+        var removed = [];
+        var remaining = [];
+        for (var i = 0; i < _subscriptions.length; i++) {
+            var s = _subscriptions[i];
+            if (s.clientId == clientId) {
+                removed.push(s);
+            } else {
+                remaining.push(s);
+            }
+        }
+        _subscriptions = remaining;            
+
+        //var clientKeyDatas = _u.pluck(clientSubscriptions, 'keyData');
+        $.each(removed, function (index, s) {            
+            var keyData = s.keyData;
+                
+            //var anyOtherSubscriber = _u.find(_subscriptions, function (s) { return _options.matchSubscriptionFn(keyData, s.keyData); }); // 
+            var anyOtherSubscriber = false;
+            for (var i = 0; i < _subscriptions.length; i++) {
+                var sub = _subscriptions[i];
+                if (_options.matchSubscriptionFn(keyData, sub.keyData)) {
+                    anyOtherSubscriber = true;
+                    break;
+                }
+            }
+
+            if (anyOtherSubscriber) {
+                log('SignalR ' + _options.name + ' will not unsubscribe from key ' + JSON.stringify(keyData) + '. ' + anyOtherSubscriber.clientId + ' is subscribed still.');          
+            } else {
+                _options.unsubscribeFn(_hub.server, keyData);
+                log('SignalR ' + _options.name + ' client ' + clientId + ' unsubscribed to key ' + JSON.stringify(keyData) + '.');
+            }
+        });
+    }
+
+    init();
+    return _interface;
+}
+
+// --------------------------------
+// implement various hubs by customizing behavior of RealtimeHub:
+
+var ConversationMessageHubFactory = {
+    createInstance: function (options) {
+        // patch in some advanced options we hide from client:
+        options = $.extend(true, {}, options, {
+            name: 'ConversationMessageHub',
+            subscribeFn: function (server, keyData, realtimeToken) { 
+                server.subscribe(keyData.convId, realtimeToken, keyData.metadataJson);
+            },
+            unsubscribeFn: function (server, keyData) {
+                server.unsubscribe(keyData.convId);
+            },
+            matchUpdateFn: function (keyData, updateData) {
+                return (keyData.convId == updateData.conversationId); 
+            },
+            matchSubscriptionFn: function (keyData, subscriptionKeyData) { 
+                return (keyData.convId == subscriptionKeyData.convId); 
+            }
+        });
+
+        // create hub instance, tack on a more convenient subscribe function:
+        var instance = RealtimeHubFactory.createInstance(options);
+
+        instance.subscribe = function (clientId, convId, metadataJson, realtimeToken, callbacks) {
+            var keyData = { convId: convId, metadataJson: metadataJson };
+            return instance.subscribeToKey(clientId, keyData, realtimeToken, callbacks);
+        };
+
+        return instance;
+    }
+}
+
+var ConversationLanguageHubFactory = {
+    createInstance: function (options) {
+        // patch in some advanced options we hide from client:
+        options = $.extend(true, {}, options, {
+            name: 'ConversationLanguageHub',
+            subscribeFn: function (server, keyData, realtimeToken) {
+                server.subscribe(keyData.convId, realtimeToken);
+            },
+            unsubscribeFn: function (server, keyData) {
+                server.unsubscribe(keyData.convId);
+            },
+            matchUpdateFn: function (keyData, updateData) {
+                return (keyData.convId == updateData.conversationId);
+            },
+            matchSubscriptionFn: function (keyData, subscriptionKeyData) {
+                return (keyData.convId == subscriptionKeyData.convId);
+            }
+        });
+
+        // create hub instance, tack on a more convenient subscribe function:
+        var instance = RealtimeHubFactory.createInstance(options);
+
+        instance.subscribe = function (clientId, convId, realtimeToken, callbacks) {
+            var keyData = { convId: convId };
+            return instance.subscribeToKey(clientId, keyData, realtimeToken, callbacks);
+        };
+
+        return instance;
+    }
+}
+
+var ConversationHubFactory = {
+    createInstance: function (options) {
+        // hack to get key from conversation object.  maybe realtime site should patch this into update object?
+        var getRealtimeToken = function(convo) {
+            if (convo.platformId == -11) {
+                var firstUserId = convo.serviceId.split(',')[0];
+                return 'UMCU.' + firstUserId;
+            } else {
+                return 'CCU.' + convo.companyId;
+            }
+        };
+
+        // patch in some advanced options we hide from client:
+        options = $.extend(true, {}, options, {
+            name: 'ConversationHub',
+            subscribeFn: function (server, keyData, realtimeToken) { server.subscribe(keyData.key, keyData.filter, realtimeToken); },
+            unsubscribeFn: function (server, keyData) { server.unsubscribe(keyData.key); },
+            
+            // note: matching functions for this hub only check the company id, not the entire key (company id + filter)
+            matchUpdateFn: function (keyData, updateData) { return (keyData.key == getRealtimeToken(updateData)); },            
+            matchSubscriptionFn: function (keyData, subscriptionKeyData) { return (keyData.key == subscriptionKeyData.key); }
+        });
+
+        // create hub instance, tack on a more convenient subscribe function:
+        var instance = RealtimeHubFactory.createInstance(options);
+
+        instance.subscribe = function (clientId, key, filter, realtimeToken, callbacks) {
+            var keyData = {
+                key: key,
+                filter: filter
+            };
+            return instance.subscribeToKey(clientId, keyData, realtimeToken, callbacks);
+        };
+
+        return instance;
+    }
+}
+
+var ConversationModificationHubFactory = {
+    createInstance: function (options) {
+        // patch in some advanced options we hide from client:
+        options = $.extend(true, {}, options, {
+            name: 'ConversationModificationHub',
+            subscribeFn: function (server, keyData, realtimeToken) { server.subscribe(keyData.convId, realtimeToken); },
+            unsubscribeFn: function (server, keyData) { server.unsubscribe(keyData.convId); },
+            matchUpdateFn: function (keyData, updateData) { return (keyData.convId == updateData.conversationId); },
+            matchSubscriptionFn: function (keyData, subscriptionKeyData) {  return (keyData.convId == subscriptionKeyData.convId); }
+        });
+
+        // create hub instance, tack on a more convenient subscribe function:
+        var instance = RealtimeHubFactory.createInstance(options);
+
+        instance.subscribe = function (clientId, convId, realtimeToken, callbacks) {
+            var keyData = { convId: convId };
+            return instance.subscribeToKey(clientId, keyData, realtimeToken, callbacks);
+        };
+
+        return instance;
+    }
+}
+
+var VersionSetsHubFactory = {
+    createInstance: function (options) {
+        options = $.extend(true, {}, options, {
+            name: 'VersionSetsHub',
+            subscribeFn: function (server, keyData, realtimeToken) { server.subscribe(keyData.companyId, realtimeToken); },
+            unsubscribeFn: function (server, keyData) { server.unsubscribe(keyData.companyId); },
+            matchUpdateFn: function (keyData, updateData) { return (keyData.companyId == updateData.companyId); },
+            matchSubscriptionFn: function (keyData, subscriptionKeyData) { return (keyData.convId == subscriptionKeyData.convId); }
+        });
+
+        // create hub instance, tack on a more convenient subscribe function:
+        var instance = RealtimeHubFactory.createInstance(options);
+
+        instance.subscribe = function (clientId, companyId, realtimeToken, onAdded, onConnectionStateChanged) {
+            var keyData = { companyId: companyId };
+            return instance.subscribeToKey(clientId, keyData, realtimeToken, onAdded, onConnectionStateChanged);
+        };
+
+        return instance;
+    }
+}
+
+var ConversationFlowTransitionHubFactory = {
+    createInstance: function (options) {
+        options = $.extend(true, {}, options, {
+            name: 'ConversationFlowTransitionHub',
+            subscribeFn: function (server, keyData, realtimeToken) { server.subscribe(keyData.flowObjectId, realtimeToken); },
+            unsubscribeFn: function (server, keyData) { server.unsubscribe(keyData.flowObjectId); },
+            matchUpdateFn: function (keyData, updateData) {
+                if (updateData.from != null) {
+                    if (keyData.flowObjectId == updateData.from.flowObjectId ||
+                        keyData.flowObjectId == updateData.from.rootFlowObjectId) {
+                        return true;
+                    }
+                }
+                if (updateData.to != null) {
+                    if (keyData.flowObjectId == updateData.to.flowObjectId ||
+                        keyData.flowObjectId == updateData.to.rootFlowObjectId) {
+                        return true;
+                    }
+                }
+                return false;
+            },
+            matchSubscriptionFn: function (keyData, subscriptionKeyData) { return (keyData.flowObjectId == subscriptionKeyData.flowObjectId); }
+        });
+
+        // create hub instance, tack on a more convenient subscribe function:
+        var instance = RealtimeHubFactory.createInstance(options);
+
+        instance.subscribe = function (clientId, flowObjectId, realtimeToken, onAdded, onConnectionStateChanged) {
+            var keyData = { flowObjectId: flowObjectId };
+            return instance.subscribeToKey(clientId, keyData, realtimeToken, onAdded, onConnectionStateChanged);
+        };
+
+        return instance;
+    }
+}
+
+
+var ExportDefinitionsHubFactory = {
+    createInstance: function (options) {
+        options = $.extend(true, {}, options, {
+            name: 'ExportDefinitionsHub',
+            subscribeFn: function (server, keyData, realtimeToken) { server.subscribe(keyData.companyId, realtimeToken); },
+            unsubscribeFn: function (server, keyData) { server.unsubscribe(keyData.companyId); },
+            matchUpdateFn: function (keyData, updateData) { return (keyData.companyId == updateData.companyId); },
+            matchSubscriptionFn: function (keyData, subscriptionKeyData) { return (keyData.companyId == subscriptionKeyData.companyId); }
+        });
+
+        // create hub instance, tack on a more convenient subscribe function:
+        var instance = RealtimeHubFactory.createInstance(options);
+
+        instance.subscribe = function (clientId, companyId, realtimeToken, onAdded, onConnectionStateChanged) {
+            var keyData = { companyId: companyId };
+            return instance.subscribeToKey(clientId, keyData, realtimeToken, onAdded, onConnectionStateChanged);
+        };
+
+        return instance;
+    }
+}
+
+var SearchIndexDocumentsHubFactory = {
+    createInstance: function (options) {
+        options = $.extend(true, {}, options, {
+            name: 'SearchIndexDocumentsHub',
+            subscribeFn: function (server, keyData, realtimeToken) { server.subscribe(keyData.searchIndexId, realtimeToken); },
+            unsubscribeFn: function (server, keyData) { server.unsubscribe(keyData.searchIndexId); },
+            matchUpdateFn: function (keyData, updateData) { return (keyData.searchIndexId == updateData.searchIndexId); },
+            matchSubscriptionFn: function (keyData, subscriptionKeyData) { return (keyData.searchIndexId == subscriptionKeyData.searchIndexId); }
+        });
+
+        // create hub instance, tack on a more convenient subscribe function:
+        var instance = RealtimeHubFactory.createInstance(options);
+
+        instance.subscribe = function (clientId, searchIndexId, realtimeToken, onAdded, onConnectionStateChanged) {
+            var keyData = { searchIndexId: searchIndexId };
+            return instance.subscribeToKey(clientId, keyData, realtimeToken, onAdded, onConnectionStateChanged);
+        };
+
+        return instance;
+    }
+}
+
+
+var NotificationsHubFactory = {
+    createInstance: function (options) {
+        options = $.extend(true, {}, options, {
+            name: 'NotificationHub',
+            subscribeFn: function (server, keyData, realtimeToken) { server.subscribe(keyData.recipientIdentifier, realtimeToken); },
+            unsubscribeFn: function (server, keyData) { server.unsubscribe(keyData.recipientIdentifier); },
+            matchUpdateFn: function (keyData, updateData) { return (keyData.recipientIdentifier == updateData.recipientIdentifier); },
+            matchSubscriptionFn: function (keyData, subscriptionKeyData) { return (keyData.recipientIdentifier == subscriptionKeyData.recipientIdentifier); }
+        });
+
+        // create hub instance, tack on a more convenient subscribe function:
+        var instance = RealtimeHubFactory.createInstance(options);
+
+        instance.subscribe = function (clientId, recipientIdentifier, realtimeToken, onAdded, onConnectionStateChanged) {
+            var keyData = { recipientIdentifier: recipientIdentifier };
+            return instance.subscribeToKey(clientId, keyData, realtimeToken, onAdded, onConnectionStateChanged);
+        };
+        return instance;
+    }
+}
+
+var UserInfoHubFactory = {
+    createInstance: function (options) {
+        // patch in some advanced options we hide from client:
+        options = $.extend(true, {}, options, {
+            name: 'UserInfoHub',
+            subscribeFn: function (server, keyData, realtimeToken) {
+                server.subscribe(keyData.userid, realtimeToken);
+            },
+            unsubscribeFn: function (server, keyData) {
+                server.unsubscribe(keyData.userid);
+            },
+            matchUpdateFn: function (keyData, updateData) {
+                return (keyData.userid == updateData.userid);
+            },
+            matchSubscriptionFn: function (keyData, subscriptionKeyData) {
+                return (keyData.userid == subscriptionKeyData.userid);
+            }
+        });
+
+        // create hub instance, tack on a more convenient subscribe function:
+        var instance = RealtimeHubFactory.createInstance(options);
+
+        instance.subscribe = function (clientId, userid, realtimeToken, callbacks) {
+            var keyData = { userid: userid };
+            return instance.subscribeToKey(clientId, keyData, realtimeToken, callbacks);
+        };
+
+        return instance;
+    }
+}
+
+var UiViewersHubFactory = {
+    createInstance: function (options) {
+        // patch in some advanced options we hide from client:
+        options = $.extend(true, {}, options, {
+            name: 'UiViewerHub',
+            subscribeFn: function (server, keyData, realtimeToken) {
+                server.subscribe(keyData.id, realtimeToken, keyData.metadataJson);
+            },
+            unsubscribeFn: function (server, keyData) {
+                server.unsubscribe(keyData.id);
+            },
+            matchUpdateFn: function (keyData, updateData) {
+                return (keyData.id == updateData.id);
+            },
+            matchSubscriptionFn: function (keyData, subscriptionKeyData) {
+                return (keyData.id == subscriptionKeyData.id);
+            }
+        });
+
+        // create hub instance, tack on a more convenient subscribe function:
+        var instance = RealtimeHubFactory.createInstance(options);
+
+        instance.subscribe = function (clientId, id, metadataJson, realtimeToken, callbacks) {
+            var keyData = { id: id, metadataJson: metadataJson };
+            return instance.subscribeToKey(clientId, keyData, realtimeToken, callbacks);
+        };
+
+        return instance;
+    }
+}
+
+var AgentWorkspaceHubFactory = {
+    createInstance: function (options) {
+        // patch in some advanced options we hide from client:
+        options = $.extend(true, {}, options, {
+            name: 'AgentWorkspaceHub',
+            subscribeFn: function (server, keyData, realtimeToken) {
+                server.subscribe(keyData.id, realtimeToken);
+            },
+            unsubscribeFn: function (server, keyData) {
+                server.unsubscribe(keyData.id);
+            },
+            matchUpdateFn: function (keyData, updateData) {
+                return (keyData.id == updateData.agentSetId);
+            },
+            matchSubscriptionFn: function (keyData, subscriptionKeyData) {
+                return (keyData.id == subscriptionKeyData.agentSetId);
+            }
+        });
+
+        // create hub instance, tack on a more convenient subscribe function:
+        var instance = RealtimeHubFactory.createInstance(options);
+
+        instance.subscribe = function (clientId, id, realtimeToken, callbacks) {
+            var keyData = { id: id };
+            return instance.subscribeToKey(clientId, keyData, realtimeToken, callbacks);
+        };
+
+        return instance;
+    }
+}
+
+var MessengerEventHubFactory = {
+    createInstance: function (options) {
+        // patch in some advanced options we hide from client:
+        var _options = $.extend(true, {}, options, {
+            name: 'MessengerEventHub',
+        });
+
+        // get client directly
+        var _hub = _options.connection;
+        var _toSend = [];
+        var _isConnected = false;
+
+        var _isRegistered = false;
+        var _messengerChannelServiceId = null;
+
+        var flush = function () {
+            if (_isConnected) {
+                if (!_isRegistered) {
+                    _hub.server.register(_messengerChannelServiceId);
+                    _isRegistered = true;
+                }
+
+                if (_toSend.length > 0) {
+                    _hub.server.sendEvents(_toSend);
+                    _toSend = [];
+                }
+            }            
+        };
+
+        var instance = {};
+
+        instance.connection = _options.connection;
+
+        instance.register = function (messengerChannelServiceId) {
+            _messengerChannelServiceId = messengerChannelServiceId;
+        };
+
+        instance.sendEvents = function (events) {
+            _toSend = _toSend.concat(events);
+
+            flush();
+        };
+
+        instance.onConnectionStateChanged = function(isConnected) {
+            _isConnected = isConnected;
+
+            flush();
+        };        
+
+        setTimeout(function () { _options.callbacks.onInitialized(); }, 1);        
+
+        return instance;
+    }
+}
+
+var BotOperationsHubFactory = {
+    createInstance: function (options) {
+        options = $.extend(true, {}, options, {
+            name: 'BotOperationsHub',
+            subscribeFn: function (server, keyData, realtimeToken) { server.subscribe(keyData.companyId, realtimeToken); },
+            unsubscribeFn: function (server, keyData) { server.unsubscribe(keyData.companyId); },
+            matchUpdateFn: function (keyData, updateData) { return (keyData.companyId == updateData.companyId); },
+            matchSubscriptionFn: function (keyData, subscriptionKeyData) { return (keyData.companyId == subscriptionKeyData.companyId); }
+        });
+
+        // create hub instance, tack on a more convenient subscribe function:
+        var instance = RealtimeHubFactory.createInstance(options);
+
+        instance.subscribe = function (clientId, companyId, realtimeToken, onAdded, onConnectionStateChanged) {
+            var keyData = { companyId: companyId };
+            return instance.subscribeToKey(clientId, keyData, realtimeToken, onAdded, onConnectionStateChanged);
+        };
+
+        return instance;
+    }
+};
