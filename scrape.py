@@ -18,26 +18,33 @@ def get_ingredients(smartLabel):
 
   return ', '.join(ingredients)
 
+def get_data(link):
+  try:
+    response = requests.get(link, headers={'User-Agent': 'test'})
+
+    if response.status_code == 200:
+      data = BeautifulSoup(response.content, 'lxml')
+      return data
+  except:
+    print('Something went wrong')
+
 for a in cereal_links:
   link = a['href']
-  response = requests.get(link, headers={'User-Agent': 'test'})
+  data = get_data(link)
 
-  if response.status_code == 200:
-    data = BeautifulSoup(response.content, 'lxml')
-    details = data.find('p', {'itemprop': 'Product Description'}).text
-    img = f"https:{data.find('img', {'itemprop': 'Product Image'})['src']}"
+  details = data.find('p', {'itemprop': 'Product Description'}).text
+  img = f"https:{data.find('img', {'itemprop': 'Product Image'})['src']}"
 
-    smartLabel_link = data.find('span', {'class': 'smtLabelbtn'}).a['href']
-    smartLabel = requests.get(smartLabel_link, headers={'User-Agent': 'test'})
-    smartLabel_data = BeautifulSoup(smartLabel.content, 'lxml')
-    
-    ingredients = get_ingredients(smartLabel_data)
+  smartLabel_link = data.find('span', {'class': 'smtLabelbtn'}).a['href']
+  smartLabel_data = get_data(smartLabel_link)
+  
+  ingredients = get_ingredients(smartLabel_data)
 
-    cereal = {}
-    cereal['details'] = details
-    cereal['img'] = img
+  cereal = {}
+  cereal['details'] = details
+  cereal['img'] = img
 
-    cereals.append(cereal)
+  cereals.append(cereal)
 
 print(cereals)
 
