@@ -112,6 +112,7 @@ for a in cereal_links:
     'details': details,
     'img': img,
     'ingredients': ingredients,
+    'nutrition_facts': nutrition_facts,
     'allergens': allergens
   }
   cereals.append(cereal)
