@@ -83,6 +83,15 @@ def get_nutrition_facts(smartLabel):
 
   return nutrition_facts
 
+def get_allergens(smartLabel):
+  allergens = []
+  allergens_data = smartLabel.select('ul#allergens-list > li > a > div.list-title')
+
+  for allergen in allergens_data:
+    allergens.append(allergen.contents[0].strip())
+
+  return allergens
+
 for a in cereal_links:
   link = a['href']
   data = get_data(link)
@@ -96,12 +105,14 @@ for a in cereal_links:
   
   ingredients = get_ingredients(smartLabel_data)
   nutrition_facts = get_nutrition_facts(smartLabel_data)
+  allergens = get_allergens(smartLabel_data)
 
   cereal = {
     'name': name,
     'details': details,
     'img': img,
-    'ingredients': ingredients
+    'ingredients': ingredients,
+    'allergens': allergens
   }
   cereals.append(cereal)
 
