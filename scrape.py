@@ -50,10 +50,9 @@ def get_nutrition_facts(smartLabel):
       dv = values[1].text
 
       nutrient = {
-        name: {
-          'amount': amount,
-          'dv': dv,
-        }
+        'name': name,
+        'amount': amount,
+        'dv': dv,
       }
 
       if header.has_attr('class'):
@@ -96,8 +95,8 @@ for a in cereal_links:
   link = a['href']
   data = get_data(link)
 
-  name = data.find('h1').text.strip()
-  details = data.find('p', {'itemprop': 'Product Description'}).text.strip()
+  name = data.find('h1').text.strip().encode('ascii', 'ignore').decode()
+  details = data.find('p', {'itemprop': 'Product Description'}).text.strip().encode('ascii', 'ignore').decode()
   img = f"https:{data.find('img', {'itemprop': 'Product Image'})['src']}"
 
   smartLabel_link = data.find('span', {'class': 'smtLabelbtn'}).a['href']
@@ -115,6 +114,8 @@ for a in cereal_links:
     'nutrition_facts': nutrition_facts,
     'allergens': allergens
   }
+
+  print(cereal)
   cereals.append(cereal)
 
 
